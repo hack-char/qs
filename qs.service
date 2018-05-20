@@ -1,0 +1,13 @@
+[Unit]
+Description=Qemu Script
+After=nftables.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /usr/bin/qs auto
+ExecStop=/bin/bash /usr/bin/qs down all
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
+

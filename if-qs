@@ -1,0 +1,83 @@
+#!/bin/bash
+
+#SED=/bin/sed
+#IP=/sbin/ip
+NFT=/usr/sbin/nft
+CUT=/usr/bin/cut
+
+. /lib/lsb/init-functions
+
+log_daemon_msg "if-qs UP starting nftables/qs on interface" "${PHASE} ${IFACE}"
+
+function is_black() {
+	$NFT list set inet filter blacklist4_ip | grep -q $1; echo $?
+}
+
+
+if [[ x${PHASE} == x"post-up" ]]; then
+
+	if [[ x${IFACE} == xlo || x${IFACE}=="x--all" ]]; then
+		log_end_msg 0
+		exit 0
+	fi
+
+	current_ips=`ip addr show dev $IFACE | grep 'inet ' | cut -f6 -d' ' | cut -f1 -d'/'`
+
+	log_daemon_msg "if-qs up ${current_ips} addresses to process"
+
+	# can enter a race condition with systemd starting /etc/nftables.conf
+	# don't try running nft twice at same time as it will hang...
+	while `ps -C nft &> /dev/null`; do
+		log_progress_msg "if-qs waiting for nft to finish"
+		sleep 1
+	done
+
+	for i in $current_ips; do
+		NEXT_ADDR=${i}
+		NEW_ADDR=`echo ${NEXT_ADDR} | $CUT -f1 -d'/'`
+		log_daemon_msg "if-qs Adding address $NEW_ADDR"
+		$NFT add element inet filter my_ip \{ $NEW_ADDR \}
+		$NFT add element ip nat my_ip \{ $NEW_ADDR \}
+		# flush doesn't work on older nftables :(
+		#	$NFT flush set inet filter blacklist4_ip
+		if [[ `is_black $NEW_ADDR` == 0 ]]; then
+			$NFT delete element inet filter blacklist4_ip  \{ $NEW_ADDR \}
+		fi
+	done
+	ip_gateway=`ip route | grep default | cut -f3 -d' '`
+
+	if [[ x${ip_gateway} != x ]]; then
+		if [[ `is_black $ip_gateway` == 0 ]]; then
+			$NFT delete element inet filter blacklist4_ip \{ $ip_gateway \}
+		fi
+	fi
+
+fi
+
+if [[ x${PHASE} == x"post-down" ]]; then
+
+	# if used dhcp we no longer know what the address was
+	# check my_ip against all assigned ips and remove any non-existant
+	current_ips=`ip addr | grep 'inet ' | cut -f6 -d' ' | cut -f1 -d'/'`
+	nft_ips=`$NFT list set inet filter my_ip | grep elements | sed '{s/.*{\(.*\)}/\1/}' | sed '{s/,/\n/}'`
+
+	log_progress_msg "if-qs current $current_ips"
+	log_progress_msg "if-qs nft $nft_ips"
+
+	for i in $nft_ips; do
+		log_progress_msg "checking $i"
+		if [[ `echo $current_ips | grep -q $i; echo $?` == 1 ]]; then
+			$NFT delete element inet filter my_ip \{ $i \}
+		fi
+	done
+	for i in $current_ips; do
+		log_progress_msg "checking again $i"
+		if [[ `$NFT list set inet filter my_ip | grep -q $i; echo $?` != 1 ]]; then
+			$NFT add element inet filter my_ip \{ $i \}
+		fi
+	done
+
+fi
+
+log_end_msg 0
+exit 0
