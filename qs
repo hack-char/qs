@@ -42,12 +42,14 @@ function qs_help() {
 	exit 0
 }
 
+LOGNAME=/usr/bin/logname
+
 # defaults SET BRIDGE per your environment
 DEFAULT_QS_CONFIG=/etc/qs
-DEFAULT_USER_QS_CONFIG=/home/${LOGNAME}/.qs
+DEFAULT_USER_QS_CONFIG=/home/`${LOGNAME}`/.qs
 # these need to be the same in nftables.conf
 DEFAULT_QS_BRIDGE=br0
-DEFAULT_QS_BRIDGE_IP=10.0.0.1/24
+DEFAULT_QS_BRIDGE_IP=10.88.105.0/24
 
 ##### Shouldn't have to edit anything below this #########
 
@@ -63,7 +65,6 @@ TR=/usr/bin/tr
 PRINTF=/usr/bin/printf
 NFT=/usr/sbin/nft
 LS=/bin/ls
-LOGNAME=/usr/bin/logname
 WC=/usr/bin/wc
 LSMOD=/bin/lsmod
 UNIQ=/usr/bin/uniq
